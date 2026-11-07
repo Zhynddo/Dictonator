@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find project
+        run: |
+          if ls *.zip >/dev/null 2>&1; then unzip -q -o "$(ls *.zip | head -1)" -d unzipped; fi
+          PROJ=$(dirname "$(find . -name settings.gradle.kts | head -1)")
+          echo "Project folder: $PROJ"
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Bundle dictionary
+        continue-on-error: true
+        run: |
+          cd "$PROJ"
+          mkdir -p app/src/main/assets
+          curl -fL --retry 3 -o /tmp/dict.txt \
+            https://raw.githubusercontent.com/yenthanh132/avdict-database-sqlite-converter/master/anhviet109K.txt
+          gzip -9c /tmp/dict.txt > app/src/main/assets/dict_en_vi.gz
+
+      - name: Build
+        run: |
+          cd "$PROJ"
+          gradle assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/DichThuat.apk"
+
+      - name: Publish download link (Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Dịch Thuật — build ${{ github.run_number }}
+          body: Tap **DichThuat.apk** below to download it on your Android phone.
+          files: DichThuat.apk
+          make_latest: true
